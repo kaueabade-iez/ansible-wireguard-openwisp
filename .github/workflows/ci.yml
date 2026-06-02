@@ -23,6 +23,8 @@ jobs:
           - distro: debian11
           - distro: debian12
           - distro: debian13
+          - distro: rockylinux9
+          - distro: rockylinux10
 
     steps:
       - uses: actions/checkout@v6
