@@ -87,6 +87,12 @@
     mode: "0754"
   tags: [flask]
 
+- name: "[EL] Set extension and path for supervisor configuration"
+  ansible.builtin.set_fact:
+    supervisord_conf_extension: "ini"
+    supervisor_conf_path: "/etc/supervisord.d"
+  when: ansible_distribution == "Rocky" or ansible_distribution == "RedHat"
+
 - name: "[Ubuntu/Debian] Set extension and path for supervisor configuration"
   ansible.builtin.set_fact:
     supervisord_conf_extension: "conf"

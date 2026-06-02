@@ -14,6 +14,11 @@
   when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
   tags: [wireguard_openwisp, apt]
 
+- name: Import DNF tasks
+  ansible.builtin.import_tasks: dnf.yml
+  when: ansible_distribution == "Rocky" or ansible_distribution == "RedHat"
+  tags: [wireguard_openwisp, dnf]
+
 - name: Import pip tasks
   ansible.builtin.import_tasks: pip.yml
   tags: [wireguard_openwisp, pip]

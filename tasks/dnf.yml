@@ -1,0 +1,83 @@
+---
+- name: "Enable CRB repository"
+  community.general.dnf_config_manager:
+    name: crb
+    state: enabled
+
+- name: "Enable EPEL repository"
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: "Update package cache"
+  ansible.builtin.package:
+    update_cache: true
+  changed_when: false
+  retries: 5
+  delay: 10
+  register: result
+  until: result is success
+
+- name: "Install system packages"
+  ansible.builtin.package:
+    name:
+      - supervisor
+      - openssl
+      - python3
+      - bridge-utils
+      - curl
+      - openssl-devel
+      - libffi-devel
+      - "@Development Tools"
+      - cronie
+      - NetworkManager
+      - wireguard-tools
+    state: latest
+  ignore_errors: true
+  retries: 5
+  delay: 10
+  register: result
+  until: result is success
+
+- name: "Install acl if acting as non-root user"
+  ansible.builtin.package:
+    name: acl
+  when: ansible_user is not defined or ansible_user != 'root'
+  retries: 5
+  delay: 10
+  register: result
+  until: result is success
+  ignore_errors: true
+
+- name: "Ensure supervisord is started"
+  ansible.builtin.service:
+    name: supervisord
+    state: started
+    enabled: true
+
+- name: "Install python3 packages"
+  ansible.builtin.package:
+    name:
+      - python3-pip
+      - python3-virtualenv
+      - python3-devel
+  retries: 5
+  delay: 10
+  register: result
+  until: result is success
+
+- name: "Check virtualenv"
+  block:
+    - name: "Check virtualenv executable path"
+      ansible.builtin.command: which virtualenv
+      register: virtualenv_output
+      changed_when: false
+    - name: "Test virtualenv executable path not empty"
+      ansible.builtin.fail:
+      when: virtualenv_output | length == 0
+      changed_when: false
+  rescue:
+    - name: "Install virtualenv system package"
+      ansible.builtin.package:
+        name: virtualenv
+        state: latest
