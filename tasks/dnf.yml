@@ -10,7 +10,7 @@
     state: present
 
 - name: "[EL] Update package cache"
-  ansible.builtin.package:
+  ansible.builtin.dnf:
     update_cache: true
   changed_when: false
   retries: 5
@@ -19,7 +19,7 @@
   until: result is success
 
 - name: "[EL] Install system packages"
-  ansible.builtin.package:
+  ansible.builtin.dnf:
     name:
       - supervisor
       - openssl
@@ -33,6 +33,7 @@
       - NetworkManager
       - wireguard-tools
     state: latest
+    allowerasing: true
   ignore_errors: true
   retries: 5
   delay: 10
@@ -40,7 +41,7 @@
   until: result is success
 
 - name: "[EL] Install acl if acting as non-root user"
-  ansible.builtin.package:
+  ansible.builtin.dnf:
     name: acl
   when: ansible_user is not defined or ansible_user != 'root'
   retries: 5
@@ -56,7 +57,7 @@
     enabled: true
 
 - name: "[EL] Install python3 packages"
-  ansible.builtin.package:
+  ansible.builtin.dnf:
     name:
       - python3-pip
       - python3-virtualenv
@@ -78,6 +79,6 @@
       changed_when: false
   rescue:
     - name: "[EL] Install virtualenv system package"
-      ansible.builtin.package:
+      ansible.builtin.dnf:
         name: virtualenv
         state: latest
