@@ -112,6 +112,85 @@ create_new_interface() {
     sudo wg-quick up $file
 }
 
+sync_routes() {
+    local _interface="$1"
+    local _conf_file="$2"
+    local _normalize_prefix
+    _normalize_prefix() {
+        # Strip /32 from IPv4 and /128 from IPv6 host routes to match
+        # the abbreviated format used by `ip route show`.
+        local prefix="$1"
+        case "$prefix" in
+            */32) echo "${prefix%/32}" ;;
+            */128) echo "${prefix%/128}" ;;
+            *) echo "$prefix" ;;
+        esac
+    }
+    local _conf_routes=""
+    while IFS= read -r _line; do
+        case "$_line" in
+            AllowedIPs*)
+                local _values="${_line#*= }"
+                local _old_IFS="$IFS"
+                IFS=','
+                for _entry in $_values; do
+                    _entry="${_entry# }"
+                    _entry="${_entry% }"
+                    _entry="$(_normalize_prefix "$_entry")"
+                    _conf_routes="$_conf_routes $_entry"
+                done
+                IFS="$_old_IFS"
+                ;;
+        esac
+    done < "$_conf_file"
+    local _active_routes=""
+    local _existing_routes=""
+    for _proto_flag in -4 -6; do
+        while IFS= read -r _route_line; do
+            local _prefix
+            _prefix=$(echo "$_route_line" | awk '{print $1}')
+            [ -z "$_prefix" ] && continue
+            _prefix="$(_normalize_prefix "$_prefix")"
+            _existing_routes="$_existing_routes $_prefix"
+            case "$_route_line" in
+                *proto\ kernel*) continue ;;
+            esac
+            _active_routes="$_active_routes $_prefix"
+        done <<EOF
+$(sudo ip "$_proto_flag" route show dev "$_interface" 2>/dev/null)
+EOF
+    done
+    for _route in $_conf_routes; do
+        local _found=0
+        for _existing in $_existing_routes; do
+            [ "$_route" = "$_existing" ] && _found=1 && break
+        done
+        if [ "$_found" -eq 0 ]; then
+            log_with_timestamp "INFO" "Adding missing route $_route on $_interface"
+            case "$_route" in
+                *:*) sudo ip -6 route add "$_route" dev "$_interface" ;;
+                *)   sudo ip -4 route add "$_route" dev "$_interface" ;;
+            esac
+            assert_exit_code $LINENO "Failed to add route $_route on $_interface."
+        fi
+    done
+    for _active in $_active_routes; do
+        local _found=0
+        for _route in $_conf_routes; do
+            [ "$_active" = "$_route" ] && _found=1 && break
+        done
+        if [ "$_found" -eq 0 ]; then
+            log_with_timestamp "INFO" "Removing stale route $_active from $_interface"
+            case "$_active" in
+                *:*) sudo ip -6 route del "$_active" dev "$_interface" ;;
+                *)   sudo ip -4 route del "$_active" dev "$_interface" ;;
+            esac
+            assert_exit_code $LINENO "Failed to remove route $_active from $_interface."
+        fi
+    done
+    unset -f _normalize_prefix
+}
+
 update_config() {
     # Set file permissions to 0660, otherwise wg will complain
     # for having public configurations
@@ -165,6 +244,8 @@ update_config() {
             sudo wg syncconf $interface "$CONF_DIR/$wg_conf_filename"
             assert_exit_code $LINENO
             rm "$CONF_DIR/$wg_conf_filename"
+            # wg syncconf does not update routes; sync them explicitly.
+            sync_routes "$interface" "$file"
         fi
         echo "$interface" > "$_MANAGED_INTERFACE"
         mv -f "$file" "$_APPLIED_CONF_DIR/$filename"
